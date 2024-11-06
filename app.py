@@ -1,42 +1,41 @@
-from flask import Flask
-import flask
-import json
-
+from flask import Flask, jsonify, request, render_template
 from databaser import Databaser
-
 
 app = Flask(__name__)
 db = Databaser()
 
-
 @app.route('/')
 def root():
-    video = db.get_random_video()
-    return flask.render_template(
-        'index.html', 
-        video=video,
-        next_video=db.get_random_video([video['id']]))
-
+    try:
+        video = db.get_random_video()
+        next_video = db.get_random_video([video['id']] if video else None)
+        return render_template('index.html', video=video, next_video=next_video)
+    except Exception as e:
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route('/next')
 def next():
-    history = flask.request.args.get('hist')
+    try:
+        history = request.args.get('hist')
+        if history == 'null':
+            history = None
+        else:
+            history = list(map(int, history.rstrip(',').split(',')))
+        video = db.get_random_video(history)
+        return jsonify(video)
+    except Exception as e:
+        return jsonify({"error": "Internal server error"}), 500
 
-    print(history)
-
-    if history == 'null':
-        history = None
-    else:
-        history = history.rstrip(',')
-        history = list(map(int, history.split(',')))
-
-    return json.dumps(db.get_random_video(history))
-
-
-@app.route('/get_<video_id>')
+@app.route('/get_<int:video_id>')
 def get_video(video_id):
-    return json.dumps(db.get_video(int(video_id)))
-
+    try:
+        video = db.get_video(video_id)
+        if video:
+            return jsonify(video)
+        else:
+            return jsonify({"error": "Video not found"}), 404
+    except Exception as e:
+        return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
