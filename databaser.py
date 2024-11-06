@@ -1,47 +1,64 @@
-
 import sqlite3
 import random
-
+from contextlib import contextmanager
 
 class Databaser:
-
     def __init__(self, db_name='database.db'):
-        self.connection = sqlite3.connect(db_name, check_same_thread=False)
-        self.connection.row_factory = sqlite3.Row
+        self.db_name = db_name
+        self._create_table()
 
-        with self.connection:
-            cursor = self.connection.cursor()
+    @contextmanager
+    def get_connection(self):
+        conn = sqlite3.connect(self.db_name)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def _create_table(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             cursor.execute('''CREATE TABLE IF NOT EXISTS videos (
                                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
                                 desc TEXT,
                                 likes INT,
                                 author_name TEXT)''')
+            conn.commit()
+
+    def get_random_video(self, history=None):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if history:
+                cursor.execute('''
+                    SELECT * FROM videos 
+                    WHERE id NOT IN ({})
+                    ORDER BY RANDOM() 
+                    LIMIT 1
+                '''.format(','.join(['?']*len(history))), history)
+            else:
+                cursor.execute('SELECT * FROM videos ORDER BY RANDOM() LIMIT 1')
+            video = cursor.fetchone()
+            return dict(video) if video else None
 
     def add_video(self, desc, author_name, video_id=None):
-        with self.connection:
-            cursor = self.connection.cursor()
-
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             if video_id is None:
                 cursor.execute('''INSERT INTO videos (desc, likes, author_name) 
                 VALUES (?, 0, ?)''', (desc, author_name))
-
             else:
                 cursor.execute('''INSERT OR REPLACE INTO videos (id, desc, likes, author_name)
                 VALUES (?, ?, 0, ?)
                 ''', (video_id, desc, author_name))
-            
-            self.connection.commit()
+            conn.commit()
 
     def get_video(self, video_id):
-        with self.connection:
-            cursor = self.connection.cursor()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
             cursor.execute('SELECT * FROM videos WHERE id = ?', (video_id,))
             r = cursor.fetchone()
-
-            if not r:
-                return
-
-            return dict(r)
+            return dict(r) if r else None
 
     def change_video(self, video_id, desc=None, author_name=None):
         with self.connection:
